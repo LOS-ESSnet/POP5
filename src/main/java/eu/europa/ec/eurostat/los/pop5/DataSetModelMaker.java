@@ -123,12 +123,6 @@ public class DataSetModelMaker {
 			}
 		}
 
-//		System.out.println(Arrays.asList(dimensionProperties));
-//		for (int col : header.keySet()) {
-//			System.out.print("\n" + col);
-//			for (String value : header.get(col)) System.out.print("\t" + value);
-//		}
-
 		// First process municipalities sheet, then the arrondissements
 		Iterator<Row> rows =null;
 		for (int sheetIndex = 0; sheetIndex < 2; sheetIndex++) {

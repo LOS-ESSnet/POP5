@@ -82,7 +82,7 @@ public class DataSetModelMaker {
 		pop5DSModel.setNsPrefix("cod-act", "http://id.insee.fr/codes/tactr/");
 
 		// Creation of the data set
-		Resource pop5DataSet = pop5DSModel.createResource(Configuration.dataSetURI("comarm"), DataCubeOntology.DataSet);
+		Resource pop5DataSet = pop5DSModel.createResource(Configuration.dataSetURI(Configuration.REFERENCE_YEAR + "-comarm"), DataCubeOntology.DataSet);
 		if (createDS) {
 			String label = "POP5 - Population de 15 ans ou plus par commune ou arrondissement municipal, sexe, âge et type d'activité - France hors Mayotte - " + Configuration.REFERENCE_YEAR;
 			pop5DataSet.addProperty(RDFS.label, pop5DSModel.createLiteral(label, "fr"));

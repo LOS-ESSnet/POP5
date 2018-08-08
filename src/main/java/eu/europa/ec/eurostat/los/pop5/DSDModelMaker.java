@@ -9,6 +9,8 @@ import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
+import org.apache.jena.vocabulary.DC;
+import org.apache.jena.vocabulary.DCTerms;
 import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDF;
 import org.apache.jena.vocabulary.RDFS;
@@ -75,6 +77,7 @@ public class DSDModelMaker {
 		geoConcept.addProperty(RDFS.subClassOf, SKOS.Concept);
 		geoConcept.addProperty(SKOS.prefLabel, geoModel.createLiteral("Commune ou arrondissement municipal au 1er janvier " + Configuration.REFERENCE_YEAR_GEO, "fr"));
 		geoConcept.addProperty(SKOS.prefLabel, geoModel.createLiteral("Municipality or municipal arrondissement on 1 January " + Configuration.REFERENCE_YEAR_GEO, "en"));
+		geoConcept.addProperty(SKOS.notation, geoModel.createLiteral("COG " + Configuration.REFERENCE_YEAR_GEO, "fr"));
 		geoCS.addProperty(RDFS.seeAlso, geoConcept);
 		geoConcept.addProperty(RDFS.seeAlso, geoCS);
 
@@ -148,16 +151,16 @@ public class DSDModelMaker {
 		String conceptName = listTitle.split(":")[1].trim();
 
 		Model conceptModel = ModelFactory.createDefaultModel();
-		conceptModel.setNsPrefix("rdfs", RDFS.getURI());
-		conceptModel.setNsPrefix("owl", OWL.getURI());
-		conceptModel.setNsPrefix("skos", SKOS.getURI());
+		conceptModel.setNsPrefixes(Configuration.CONCEPT_SCHEME_PREFIXES);
 		// Create the concept scheme and the associated concept
 		Resource scheme = conceptModel.createResource(Configuration.conceptSchemeURI(conceptCode, conceptName), SKOS.ConceptScheme);
 		scheme.addProperty(SKOS.prefLabel, conceptModel.createLiteral(Configuration.getConceptSchemeName(conceptCode, conceptName), "fr"));
+		scheme.addProperty(SKOS.notation, conceptModel.createLiteral(conceptCode.toUpperCase(), "fr"));
 		Resource concept = conceptModel.createResource(Configuration.codeConceptURI(conceptCode, conceptName), OWL.Class);
 		concept.addProperty(RDF.type, RDFS.Class);
 		concept.addProperty(RDFS.subClassOf, SKOS.Concept);
 		concept.addProperty(SKOS.prefLabel, conceptModel.createLiteral(conceptName, "fr"));
+		concept.addProperty(SKOS.notation, conceptModel.createLiteral(conceptCode, "fr"));
 		scheme.addProperty(RDFS.seeAlso, concept);
 		concept.addProperty(RDFS.seeAlso, scheme);
 
@@ -172,7 +175,6 @@ public class DSDModelMaker {
 			entry.addProperty(SKOS.notation, entryCode);
 			entry.addProperty(SKOS.prefLabel, conceptModel.createLiteral(entryName, "fr"));
 			entry.addProperty(SKOS.inScheme, scheme);
-
 		}
 		return conceptModel;
 	}
@@ -189,9 +191,12 @@ public class DSDModelMaker {
 		pop5DSDModel.setNsPrefixes(Configuration.DSD_PREFIXES);
 
 		// Creation of the DSD
-		Resource pop5DSD = pop5DSDModel.createResource(Configuration.dsdURI("comarm"), DataCubeOntology.DataStructureDefinition);
+		Resource pop5DSD = pop5DSDModel.createResource(Configuration.dsdURI(Configuration.REFERENCE_YEAR + "-comarm"), DataCubeOntology.DataStructureDefinition);
 		pop5DSD.addProperty(RDFS.label, pop5DSDModel.createLiteral("Définition de structure de données pour POP5, année " + Configuration.REFERENCE_YEAR, "fr"));
 		pop5DSD.addProperty(RDFS.label, pop5DSDModel.createLiteral("Data structure definition pour POP5, year " + Configuration.REFERENCE_YEAR, "en"));
+		pop5DSD.addProperty(DC.description, pop5DSDModel.createLiteral("Population de 15 ans et plus par tranche d'âge, sexe et type d'activité, année " + Configuration.REFERENCE_YEAR, "fr"));
+		pop5DSD.addProperty(DC.description, pop5DSDModel.createLiteral("Population age 15 or more by age group, sex and type of activity, year " + Configuration.REFERENCE_YEAR, "en"));
+		pop5DSD.addProperty(DCTerms.identifier, pop5DSDModel.createLiteral("DSD-POP5-COMARM", "fr"));
 		logger.info("Creating DSD " + pop5DSD.getURI());
 
 		// Create the geographic dimension property
@@ -199,6 +204,7 @@ public class DSDModelMaker {
 		pop5GeoDimensionProperty.addProperty(RDFS.subPropertyOf, pop5DSDModel.createResource("http://purl.org/linked-data/sdmx/2009/dimension#refArea"));
 		pop5GeoDimensionProperty.addProperty(RDFS.label, pop5DSDModel.createLiteral("Commune ou arrondissement municipal (COG " + Configuration.REFERENCE_YEAR_GEO + ")", "fr"));
 		pop5GeoDimensionProperty.addProperty(DataCubeOntology.concept, pop5DSDModel.createResource("http://purl.org/linked-data/sdmx/2009/concept#refArea")); // Could create specific sub-concept
+		pop5GeoDimensionProperty.addProperty(DCTerms.identifier, pop5DSDModel.createLiteral("COG " + Configuration.REFERENCE_YEAR_GEO, "fr"));
 		pop5GeoDimensionProperty.addProperty(RDFS.range, pop5DSDModel.createResource(Configuration.GEO_CODE_CONCEPT_URI));
 		pop5GeoDimensionProperty.addProperty(DataCubeOntology.codeList, pop5DSDModel.createResource(Configuration.GEO_CONCEPT_SCHEME_URI));
 		// Attach the geographic dimension property to the DSD through anonymous ComponentSpecification
@@ -216,6 +222,7 @@ public class DSDModelMaker {
 			// If there is a SDMX concept, use it (we could also create a specific sub-concept), otherwise create ad hoc concept
 			if (sdmxBroaderConcept != null) dimensionProperty.addProperty(DataCubeOntology.concept, pop5DSDModel.createResource("http://purl.org/linked-data/sdmx/2009/concept#" + sdmxBroaderConcept));
 			else dimensionProperty.addProperty(DataCubeOntology.concept, pop5DSDModel.createResource(Configuration.conceptURI(conceptCode,conceptName)));
+			dimensionProperty.addProperty(DCTerms.identifier, pop5DSDModel.createLiteral(conceptCode, "fr"));
 			dimensionProperty.addProperty(RDFS.range, pop5DSDModel.createResource(Configuration.codeConceptURI(conceptCode, conceptName)));
 			dimensionProperty.addProperty(DataCubeOntology.codeList, pop5DSDModel.createResource(Configuration.conceptSchemeURI(conceptCode, conceptName)));
 			// Attach the dimension property to the DSD through anonymous ComponentSpecification
@@ -226,11 +233,11 @@ public class DSDModelMaker {
 		Resource measureProperty = pop5DSDModel.createResource(Configuration.POP_MEASURE_URI, DataCubeOntology.MeasureProperty); // The component is not coded
 		measureProperty.addProperty(RDFS.subPropertyOf, pop5DSDModel.createResource(Configuration.SDMX_OBS_VALUE_MEASURE_URI));
 		measureProperty.addProperty(RDFS.label, pop5DSDModel.createLiteral(Configuration.POP_MEASURE_NAME, "fr"));
+		measureProperty.addProperty(DCTerms.identifier, pop5DSDModel.createLiteral(Configuration.POP_MEASURE_ID, "fr"));
 		measureProperty.addProperty(DataCubeOntology.concept, pop5DSDModel.createResource(Configuration.POP_CONCEPT_URI));
 		measureProperty.addProperty(RDFS.range, XSD.xint);
 		pop5DSD.addProperty(DataCubeOntology.component, pop5DSDModel.createResource(DataCubeOntology.ComponentSpecification).addProperty(DataCubeOntology.measure, measureProperty));
 
 		return pop5DSDModel;
 	}
-
 }

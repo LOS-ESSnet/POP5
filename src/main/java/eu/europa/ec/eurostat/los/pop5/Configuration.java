@@ -5,7 +5,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.jena.vocabulary.DC;
+import org.apache.jena.vocabulary.DCTerms;
+import org.apache.jena.vocabulary.OWL;
 import org.apache.jena.vocabulary.RDFS;
+import org.apache.jena.vocabulary.SKOS;
 import org.apache.jena.vocabulary.XSD;
 
 import eu.europa.ec.eurostat.los.utils.DataCubeOntology;
@@ -26,8 +30,17 @@ public class Configuration {
 	static {
 		DSD_PREFIXES.put("qb", DataCubeOntology.getURI());
 		DSD_PREFIXES.put("rdfs", RDFS.getURI());
-		DSD_PREFIXES.put("XSD", XSD.getURI());
+		DSD_PREFIXES.put("dc", DC.getURI());		
+		DSD_PREFIXES.put("dc", DCTerms.getURI());		
+		DSD_PREFIXES.put("xsd", XSD.getURI());
 	}
+	public static Map<String, String> CONCEPT_SCHEME_PREFIXES = new HashMap<String, String>();
+	static {
+		CONCEPT_SCHEME_PREFIXES.put("rdfs", RDFS.getURI());
+		CONCEPT_SCHEME_PREFIXES.put("owl", OWL.getURI());
+		CONCEPT_SCHEME_PREFIXES.put("skos", SKOS.getURI());
+	}
+
 
 	/** Location of the variable definitions */
 	public final int DEFINITIONS_SHEET_INDEX = 2;
@@ -35,8 +48,9 @@ public class Configuration {
 	public final static String HEADER_LINE_INDEXES = "5-7";
 
 	public static final String BASE_URI = "http://id.insee.fr/meta/";
-	public static final String POP5_BASE_URI = BASE_URI + "demo/pop5/" + REFERENCE_YEAR + "/";
+	public static final String POP5_BASE_URI = BASE_URI + "demo/pop5/";
 
+	public static final String POP_MEASURE_ID = "POP15PLUS";
 	public static final String POP_MEASURE_URI = "http://id.insee.fr/meta/mesure/pop15Plus";
 	public static final String POP_MEASURE_NAME = "Population de 15 ans ou plus";
 	public static final String POP_CONCEPT_URI = "http://purl.org/linked-data/sdmx/2009/concept#statPop"; // Using the SDMX concept for now, maybe define a more specific one
@@ -134,6 +148,6 @@ public class Configuration {
 	}
 
 	public static String observationURI(String geoCode, String[] dimensionValues) {
-		return POP5_BASE_URI + "observation/" + geoCode + "-" + String.join("-", dimensionValues);	
+		return POP5_BASE_URI + "observation/" + REFERENCE_YEAR + "-" + geoCode + "-" + String.join("-", dimensionValues);	
 	}
 }

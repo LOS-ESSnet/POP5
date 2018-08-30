@@ -52,6 +52,10 @@ public class DataSetModelMaker {
 			pop5Model.close();
 			Thread.sleep(20000); // Rest a bit
 		}
+		// Create departemental data set
+		Model pop5DepartementalObservations = getDataSetDepartementalObservations();
+		totalSize += pop5DepartementalObservations.size();
+		RDFDataMgr.write(new FileOutputStream("src/main/resources/data/ds-pop5-dep.ttl"), pop5DepartementalObservations, Lang.TURTLE);
 		logger.info("Processing complete, total number of statements: " + totalSize);		
 	}
 
@@ -72,8 +76,8 @@ public class DataSetModelMaker {
 		pop5DSModel.setNsPrefix(basePrefix, Configuration.COG_BASE_CODE_URI);
 		pop5DSModel.setNsPrefix(basePrefix + "-com", Configuration.communeURI(""));
 		pop5DSModel.setNsPrefix(basePrefix + "-arm", Configuration.arrondissementMunicipalURI(""));
-		pop5DSModel.setNsPrefix("pop5-ds", "http://id.insee.fr/meta/demo/pop5/2015/dataSet/");
-		pop5DSModel.setNsPrefix("pop5-obs", "http://id.insee.fr/meta/demo/pop5/2015/observation/"); // TODO replace by call to dimensionURI("");
+		pop5DSModel.setNsPrefix("pop5-ds", "http://id.insee.fr/meta/demo/pop5/dataSet/");
+		pop5DSModel.setNsPrefix("pop5-obs", "http://id.insee.fr/meta/demo/pop5/observation/"); // TODO replace by call to dimensionURI("");
 		pop5DSModel.setNsPrefix("cog2017-dim", "http://id.insee.fr/meta/cog2017/dimension/");
 		pop5DSModel.setNsPrefix("dim", "http://id.insee.fr/meta/dimension/");
 		pop5DSModel.setNsPrefix("mes", "http://id.insee.fr/meta/mesure/");
@@ -82,13 +86,13 @@ public class DataSetModelMaker {
 		pop5DSModel.setNsPrefix("cod-act", "http://id.insee.fr/codes/tactr/");
 
 		// Creation of the data set
-		Resource pop5DataSet = pop5DSModel.createResource(Configuration.dataSetURI(Configuration.REFERENCE_YEAR + "-comarm"), DataCubeOntology.DataSet);
+		Resource pop5DataSet = pop5DSModel.createResource(Configuration.dataSetURI(Configuration.REFERENCE_YEAR + "-depcomarm"), DataCubeOntology.DataSet);
 		if (createDS) {
 			String label = "POP5 - Population de 15 ans ou plus par commune ou arrondissement municipal, sexe, âge et type d'activité - France hors Mayotte - " + Configuration.REFERENCE_YEAR;
 			pop5DataSet.addProperty(RDFS.label, pop5DSModel.createLiteral(label, "fr"));
 			label = "POP5 - Population age 15 or more by municipality or municipal arrondissement, sex, age and type of activity - France except Mayotte - " + Configuration.REFERENCE_YEAR;
 			pop5DataSet.addProperty(RDFS.label, pop5DSModel.createLiteral(label, "en"));
-			pop5DataSet.addProperty(DataCubeOntology.structure, pop5DSModel.createResource(Configuration.dsdURI("comarm")));
+			pop5DataSet.addProperty(DataCubeOntology.structure, pop5DSModel.createResource(Configuration.dsdURI("depcomarm")));
 			logger.info("Creating Data Set " + pop5DataSet.getURI());		
 		}
 
@@ -155,5 +159,97 @@ public class DataSetModelMaker {
 		logger.info("Model complete, number of statements: " + pop5DSModel.size());		
 
 		return pop5DSModel;
+	}
+	
+	/**
+	 * Reads the spreadsheet, compute departemental measures and build observations.
+	 * 
+	 * @return A Jena model containing the departemental data.
+	 */
+	public static Model getDataSetDepartementalObservations() {
+		
+		// Read the interpretative header
+		Sheet dataSheet = wb.getSheetAt(0);
+		int firstHeaderLineIndex = Integer.parseInt(Configuration.HEADER_LINE_INDEXES.split("-")[0]);
+		int lastHeaderLineIndex = Integer.parseInt(Configuration.HEADER_LINE_INDEXES.split("-")[1]);
+		int headerSize = lastHeaderLineIndex - firstHeaderLineIndex + 1;
+		Map<Integer, String[]> header = new HashMap<Integer, String[]>();
+
+		for (int index = 0; index < headerSize; index++) {
+			Row headerRow = dataSheet.getRow(index + firstHeaderLineIndex);
+			Iterator<Cell> cellIterator = headerRow.cellIterator();
+			if (index == 0) cellIterator.next(); // Skip first column, only when it is not empty (i.e. first line of the header)
+			while (cellIterator.hasNext()) {
+				Cell headerCell = cellIterator.next();
+				int headerIndex = headerCell.getColumnIndex();
+				if (!header.containsKey(headerIndex)) {
+					header.put(headerIndex, new String[headerSize]);
+				}
+				header.get(headerIndex)[index] = headerCell.toString();
+			}
+		}
+		
+		// Read pop15plus measure values
+		Map<String, Float> depMeasures = new HashMap<String, Float>();
+		Iterator<Row> rows = null;
+		rows = wb.getSheetAt(0).rowIterator();
+		while (rows.next().getRowNum() < Configuration.FIRST_DATA_LINE_INDEX); // Go to first data line
+		while (rows.hasNext()) {
+			Row currentRow = rows.next();
+			Iterator<Cell> cellIterator = currentRow.cellIterator();
+			// Get geographic code in first column and create associated resource
+			String geoCode = cellIterator.next().toString();
+			cellIterator.next(); // Skip geographic label
+			while (cellIterator.hasNext()) {
+				Cell observationCell = cellIterator.next();
+				int columnNumber = observationCell.getColumnIndex();
+				String key = Configuration.getDepFromCommune(geoCode) + "-" + String.join("-", header.get(columnNumber));
+				if (!depMeasures.containsKey(key)) depMeasures.put(key, (float) 0);
+				float measure = (float) observationCell.getNumericCellValue();
+				depMeasures.put(key, depMeasures.get(key) + measure);
+			}
+		}
+		
+		Model pop5DSDepModel = ModelFactory.createDefaultModel();
+		pop5DSDepModel.setNsPrefix("xsd", XSD.getURI());
+		pop5DSDepModel.setNsPrefix("qb", DataCubeOntology.getURI());
+		String basePrefix = "cog" + Configuration.REFERENCE_YEAR_GEO;
+		pop5DSDepModel.setNsPrefix(basePrefix, Configuration.COG_BASE_CODE_URI);
+		pop5DSDepModel.setNsPrefix("pop5-ds", "http://id.insee.fr/meta/demo/pop5/dataSet/");
+		pop5DSDepModel.setNsPrefix("pop5-obs", "http://id.insee.fr/meta/demo/pop5/observation/"); // TODO replace by call to dimensionURI("");
+		pop5DSDepModel.setNsPrefix("cog2017-dim", "http://id.insee.fr/meta/cog2017/dimension/");
+		pop5DSDepModel.setNsPrefix("dim", "http://id.insee.fr/meta/dimension/");
+		pop5DSDepModel.setNsPrefix("mes", "http://id.insee.fr/meta/mesure/");
+		pop5DSDepModel.setNsPrefix("cod-age", "http://id.insee.fr/codes/ageq65/");
+		pop5DSDepModel.setNsPrefix("cod-sex", "http://id.insee.fr/codes/sexe/");
+		pop5DSDepModel.setNsPrefix("cod-act", "http://id.insee.fr/codes/tactr/");	
+		
+		Resource pop5DataSet = pop5DSDepModel.createResource(Configuration.dataSetURI(Configuration.REFERENCE_YEAR + "-depcomarm"), DataCubeOntology.DataSet);
+		// Dimensions and measure
+		Property geoDimensionProperty = pop5DSDepModel.createProperty(Configuration.geoDimensionURI);
+		Property sexDimensionProperty = pop5DSDepModel.createProperty(Configuration.componentURI("dimension", "SEXE"));
+		Property ageq65DimensionProperty = pop5DSDepModel.createProperty(Configuration.componentURI("dimension", "AGEQ65"));
+		Property tactrDimensionProperty = pop5DSDepModel.createProperty(Configuration.componentURI("dimension", "TACTR"));
+		Property measureProperty = pop5DSDepModel.createProperty(Configuration.POP_MEASURE_URI);
+		
+		for (Map.Entry<String, Float> entry : depMeasures.entrySet()) {
+			Resource observation = pop5DSDepModel.createResource(Configuration.observationURI(entry.getKey()), DataCubeOntology.Observation);
+			observation.addProperty(DataCubeOntology.dataSet, pop5DataSet);
+			// Get dimension values (dep-sex-ageq65-tactr)
+			String[] dimensionValues = entry.getKey().split("-");
+			// Add dimension values
+			Resource geoResource = pop5DSDepModel.createResource(Configuration.cogItemURI(dimensionValues[0]));
+			observation.addProperty(geoDimensionProperty, geoResource);
+			Resource sexResource = pop5DSDepModel.createResource(Configuration.codeItemURI("SEXE", dimensionValues[1]));
+			observation.addProperty(sexDimensionProperty, sexResource);
+			Resource ageq65Resource = pop5DSDepModel.createResource(Configuration.codeItemURI("AGEQ65", dimensionValues[2]));
+			observation.addProperty(ageq65DimensionProperty, ageq65Resource);
+			Resource tactrResource = pop5DSDepModel.createResource(Configuration.codeItemURI("TACTR", dimensionValues[3]));
+			observation.addProperty(tactrDimensionProperty, tactrResource);
+			// Add measure
+			observation.addProperty(measureProperty, pop5DSDepModel.createTypedLiteral(entry.getValue()));
+		}		
+		
+		return pop5DSDepModel;	
 	}
 }

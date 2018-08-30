@@ -19,6 +19,7 @@ public class Configuration {
 
 	public static final int REFERENCE_YEAR = 2015;
 	public static final int REFERENCE_YEAR_GEO = REFERENCE_YEAR + 2;
+	public static final String INSEE_SPARQL_ENDPOINT = "http://id.insee.fr/sparql";
 
 	/** Name of the Excel file containing the POP5 data
 	 * The source file is at https://insee.fr/fr/statistiques/3561090?sommaire=3561107 */
@@ -58,8 +59,11 @@ public class Configuration {
 
 	/** Naming constants and methods for geographic components */
 	public static String COG_BASE_CODE_URI = "http://id.insee.fr/codes/cog" + REFERENCE_YEAR_GEO + "/";
-	public static String GEO_CONCEPT_SCHEME_URI = COG_BASE_CODE_URI + "communesOuArrondissementsMunicipaux";
-	public static String GEO_CODE_CONCEPT_URI = COG_BASE_CODE_URI + "CommuneOuArrondissementMunicipal";
+	public static String GEO_CONCEPT_SCHEME_URI = COG_BASE_CODE_URI + "departementsOuCommunesOuArrondissementsMunicipaux";
+	public static String GEO_CODE_CONCEPT_URI = COG_BASE_CODE_URI + "DepartementOuCommuneOuArrondissementMunicipal";
+	public static String departementURI(String code) {
+		return COG_BASE_CODE_URI + "departement/" + code;	
+	}
 	public static String communeURI(String code) {
 		return COG_BASE_CODE_URI + "commune/" + code;	
 	}
@@ -67,10 +71,11 @@ public class Configuration {
 		return COG_BASE_CODE_URI + "arrondissementMunicipal/" + code;	
 	}
 	public static String cogItemURI(String code) {
-		if (getParentGeoCode(code) == null) return communeURI(code);
+		if (code.length() < 5) return departementURI(code);
+		else if (getParentGeoCode(code) == null) return communeURI(code);
 		return arrondissementMunicipalURI(code);
 	}
-	public static String geoDimensionURI = "http://id.insee.fr/meta/cog" + REFERENCE_YEAR_GEO + "/dimension/communeOuArrondissementMunicipal";
+	public static String geoDimensionURI = "http://id.insee.fr/meta/cog" + REFERENCE_YEAR_GEO + "/dimension/DepartementOuCommuneOuArrondissementMunicipal";
 	public static String getParentGeoCode(String code) {
 
 		if (code == null) return null;
@@ -78,6 +83,12 @@ public class Configuration {
 		if (code.startsWith("69") && (!"69123".equals(code))) return "69123";
 		if (code.startsWith("75") && (!"75056".equals(code))) return "75056";
 		return null;
+	}
+	
+	public static String getDepFromCommune(String code) {
+		if(code.startsWith("2A") || code.startsWith("2B")) return "20";
+		else if (code.startsWith("97")) return code.substring(0, 3);
+		else return code.substring(0, 2); 
 	}
 
 	/** Naming constants and methods for other components */
@@ -150,4 +161,14 @@ public class Configuration {
 	public static String observationURI(String geoCode, String[] dimensionValues) {
 		return POP5_BASE_URI + "observation/" + REFERENCE_YEAR + "-" + geoCode + "-" + String.join("-", dimensionValues);	
 	}
+	
+	public static String observationURI(String params) {
+		return POP5_BASE_URI + "observation/" + REFERENCE_YEAR + "-" + params;	
+	}
+	
+	/** Insee geo object base URIs */
+	
+	public static String DEPARTEMENT_BASE_URI = "http://id.insee.fr/geo/departement/";
+	public static String COMMUNE_BASE_URI = "http://id.insee.fr/geo/commune/";
+	public static String ARRONDISSEMENT_BASE_URI = "http://id.insee.fr/geo/arrondissementMunicipal/";
 }

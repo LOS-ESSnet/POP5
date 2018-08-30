@@ -3,12 +3,19 @@ package eu.europa.ec.eurostat.los.pop5;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.util.Iterator;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
+import org.apache.jena.query.QueryExecution;
+import org.apache.jena.query.QueryExecutionFactory;
+import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
+import org.apache.jena.sparql.vocabulary.FOAF;
 import org.apache.jena.vocabulary.DC;
 import org.apache.jena.vocabulary.DCTerms;
 import org.apache.jena.vocabulary.OWL;
@@ -63,25 +70,56 @@ public class DSDModelMaker {
 		geoModel.setNsPrefix("rdfs", RDFS.getURI());
 		geoModel.setNsPrefix("owl", OWL.getURI());
 		geoModel.setNsPrefix("skos", SKOS.getURI());
+		geoModel.setNsPrefix("foaf", FOAF.getURI());
 		String basePrefix = "cog" + Configuration.REFERENCE_YEAR_GEO;
 		geoModel.setNsPrefix(basePrefix, Configuration.COG_BASE_CODE_URI);
+		geoModel.setNsPrefix(basePrefix + "-dep", Configuration.departementURI(""));
 		geoModel.setNsPrefix(basePrefix + "-com", Configuration.communeURI(""));
 		geoModel.setNsPrefix(basePrefix + "-arm", Configuration.arrondissementMunicipalURI(""));
 
 		// Create the concept scheme and the associated concept
 		Resource geoCS = geoModel.createResource(Configuration.GEO_CONCEPT_SCHEME_URI, SKOS.ConceptScheme);
-		geoCS.addProperty(SKOS.prefLabel, geoModel.createLiteral("Liste des communes et arrondissements municipaux au 1er janvier " + Configuration.REFERENCE_YEAR_GEO, "fr"));
-		geoCS.addProperty(SKOS.prefLabel, geoModel.createLiteral("List of municipalities and municipal arrondissements on 1 January " + Configuration.REFERENCE_YEAR_GEO, "en"));
+		geoCS.addProperty(SKOS.prefLabel, geoModel.createLiteral("Liste des départements, communes et arrondissements municipaux au 1er janvier " + Configuration.REFERENCE_YEAR_GEO, "fr"));
+		geoCS.addProperty(SKOS.prefLabel, geoModel.createLiteral("List of departements, municipalities and municipal arrondissements on 1 January " + Configuration.REFERENCE_YEAR_GEO, "en"));
 		Resource geoConcept = geoModel.createResource(Configuration.GEO_CODE_CONCEPT_URI, OWL.Class);
 		geoConcept.addProperty(RDF.type, RDFS.Class);
 		geoConcept.addProperty(RDFS.subClassOf, SKOS.Concept);
-		geoConcept.addProperty(SKOS.prefLabel, geoModel.createLiteral("Commune ou arrondissement municipal au 1er janvier " + Configuration.REFERENCE_YEAR_GEO, "fr"));
-		geoConcept.addProperty(SKOS.prefLabel, geoModel.createLiteral("Municipality or municipal arrondissement on 1 January " + Configuration.REFERENCE_YEAR_GEO, "en"));
+		geoConcept.addProperty(SKOS.prefLabel, geoModel.createLiteral("Département, commune ou arrondissement municipal au 1er janvier " + Configuration.REFERENCE_YEAR_GEO, "fr"));
+		geoConcept.addProperty(SKOS.prefLabel, geoModel.createLiteral("Departement, municipality or municipal arrondissement on 1 January " + Configuration.REFERENCE_YEAR_GEO, "en"));
 		geoConcept.addProperty(SKOS.notation, geoModel.createLiteral("COG " + Configuration.REFERENCE_YEAR_GEO, "fr"));
 		geoCS.addProperty(RDFS.seeAlso, geoConcept);
 		geoConcept.addProperty(RDFS.seeAlso, geoCS);
+		
+		// First retrieve departements from id.insee.fr/sparql
+		SortedMap<String, String> departements = new TreeMap<String, String>();
+		
+	    String depQuery = "PREFIX igeo:<http://rdf.insee.fr/def/geo#> \n"
+	    		+ "SELECT ?code ?label \n"
+	    		+ "WHERE { \n"
+        		+ "?dep a igeo:Departement . \n"
+        		+ "?dep igeo:codeINSEE ?code . \n"
+        		+ "?dep igeo:nom ?label . \n"
+        		+ "FILTER(lang(?label)='fr') \n"
+        		+ "}";
+	    
+	    logger.debug("Querying " + Configuration.INSEE_SPARQL_ENDPOINT + " with query: " + depQuery);
+		QueryExecution execution = QueryExecutionFactory.sparqlService(Configuration.INSEE_SPARQL_ENDPOINT, depQuery);
+		ResultSet results = execution.execSelect();
+		results.forEachRemaining(querySolution -> {
+			departements.put(querySolution.getLiteral("?code").getLexicalForm(), querySolution.getLiteral("?label").getLexicalForm());
+		});
+		execution.close();
+		logger.debug("Departements map size: " + departements.size());
+		for (Map.Entry<String, String> entry : departements.entrySet()) {
+			Resource geoEntry = geoModel.createResource(Configuration.cogItemURI(entry.getKey()), geoConcept);
+			geoEntry.addProperty(RDF.type, SKOS.Concept); // For stupid clients
+			geoEntry.addProperty(SKOS.notation, entry.getKey());
+			geoEntry.addProperty(SKOS.prefLabel, geoModel.createLiteral(entry.getValue(), "fr"));
+			geoEntry.addProperty(SKOS.topConceptOf, geoCS);
+			geoEntry.addProperty(FOAF.focus, geoModel.createResource(Configuration.DEPARTEMENT_BASE_URI + entry.getKey()));
+		}	
 
-		// First process municipalities sheet
+		// Then process municipalities sheet
 		Iterator<Row> rows = wb.getSheetAt(0).rowIterator();
 		while (rows.hasNext()) {
 			Row currentRow = rows.next();
@@ -92,7 +130,12 @@ public class DSDModelMaker {
 			geoEntry.addProperty(RDF.type, SKOS.Concept); // For stupid clients
 			geoEntry.addProperty(SKOS.notation, code);
 			geoEntry.addProperty(SKOS.prefLabel, geoModel.createLiteral(name, "fr"));
-			geoEntry.addProperty(SKOS.topConceptOf, geoCS);
+			// Create departement links
+			Resource dep = geoModel.createResource(Configuration.cogItemURI(Configuration.getDepFromCommune(code)), geoConcept); // Normally already in the model
+			dep.addProperty(SKOS.narrower, geoEntry);
+			geoEntry.addProperty(SKOS.broader, dep);
+			geoEntry.addProperty(FOAF.focus, geoModel.createResource(Configuration.COMMUNE_BASE_URI + code));
+			
 		}
 		// Then the arrondissements
 		rows = wb.getSheetAt(1).rowIterator();
@@ -112,6 +155,7 @@ public class DSDModelMaker {
 				parent.addProperty(SKOS.narrower, geoEntry);
 				geoEntry.addProperty(SKOS.broader, parent);
 			}
+			geoEntry.addProperty(FOAF.focus, geoModel.createResource(Configuration.ARRONDISSEMENT_BASE_URI + code));
 		}
 
 		return geoModel;
@@ -191,20 +235,20 @@ public class DSDModelMaker {
 		pop5DSDModel.setNsPrefixes(Configuration.DSD_PREFIXES);
 
 		// Creation of the DSD
-		Resource pop5DSD = pop5DSDModel.createResource(Configuration.dsdURI(Configuration.REFERENCE_YEAR + "-comarm"), DataCubeOntology.DataStructureDefinition);
+		Resource pop5DSD = pop5DSDModel.createResource(Configuration.dsdURI(Configuration.REFERENCE_YEAR + "-depcomarm"), DataCubeOntology.DataStructureDefinition);
 		pop5DSD.addProperty(RDFS.label, pop5DSDModel.createLiteral("Définition de structure de données pour POP5, année " + Configuration.REFERENCE_YEAR, "fr"));
 		pop5DSD.addProperty(RDFS.label, pop5DSDModel.createLiteral("Data structure definition pour POP5, year " + Configuration.REFERENCE_YEAR, "en"));
 		pop5DSD.addProperty(DC.description, pop5DSDModel.createLiteral("Population de 15 ans et plus par tranche d'âge, sexe et type d'activité, année " + Configuration.REFERENCE_YEAR, "fr"));
 		pop5DSD.addProperty(DC.description, pop5DSDModel.createLiteral("Population age 15 or more by age group, sex and type of activity, year " + Configuration.REFERENCE_YEAR, "en"));
-		pop5DSD.addProperty(DCTerms.identifier, pop5DSDModel.createLiteral("DSD-POP5-COMARM", "fr"));
+		pop5DSD.addProperty(DCTerms.identifier, pop5DSDModel.createLiteral("DSD-POP5-DEPCOMARM", "fr"));
 		logger.info("Creating DSD " + pop5DSD.getURI());
 
 		// Create the geographic dimension property
 		Resource pop5GeoDimensionProperty = pop5DSDModel.createResource(Configuration.geoDimensionURI, DataCubeOntology.DimensionProperty).addProperty(RDF.type, DataCubeOntology.CodedProperty);
 		pop5GeoDimensionProperty.addProperty(RDFS.subPropertyOf, pop5DSDModel.createResource("http://purl.org/linked-data/sdmx/2009/dimension#refArea"));
-		pop5GeoDimensionProperty.addProperty(RDFS.label, pop5DSDModel.createLiteral("Commune ou arrondissement municipal (COG " + Configuration.REFERENCE_YEAR_GEO + ")", "fr"));
+		pop5GeoDimensionProperty.addProperty(RDFS.label, pop5DSDModel.createLiteral("Département, commune ou arrondissement municipal (COG " + Configuration.REFERENCE_YEAR_GEO + ")", "fr"));
 		pop5GeoDimensionProperty.addProperty(DataCubeOntology.concept, pop5DSDModel.createResource("http://purl.org/linked-data/sdmx/2009/concept#refArea")); // Could create specific sub-concept
-		pop5GeoDimensionProperty.addProperty(DCTerms.identifier, pop5DSDModel.createLiteral("COG " + Configuration.REFERENCE_YEAR_GEO, "fr"));
+		pop5GeoDimensionProperty.addProperty(DCTerms.identifier, pop5DSDModel.createLiteral("COG" + Configuration.REFERENCE_YEAR_GEO, "fr"));
 		pop5GeoDimensionProperty.addProperty(RDFS.range, pop5DSDModel.createResource(Configuration.GEO_CODE_CONCEPT_URI));
 		pop5GeoDimensionProperty.addProperty(DataCubeOntology.codeList, pop5DSDModel.createResource(Configuration.GEO_CONCEPT_SCHEME_URI));
 		// Attach the geographic dimension property to the DSD through anonymous ComponentSpecification
